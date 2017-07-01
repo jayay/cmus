@@ -175,6 +175,7 @@ jack-objs		:= op/jack.lo
 arts-objs		:= op/arts.lo
 oss-objs		:= op/oss.lo op/mixer_oss.lo
 sun-objs		:= op/sun.lo op/mixer_sun.lo
+obsd-objs		:= op/obsd.lo
 sndio-objs		:= op/sndio.lo
 ao-objs			:= op/ao.lo
 coreaudio-objs		:= op/coreaudio.lo
@@ -188,6 +189,7 @@ op-$(CONFIG_ARTS)	+= op/arts.so
 op-$(CONFIG_OSS)	+= op/oss.so
 op-$(CONFIG_SNDIO)	+= op/sndio.so
 op-$(CONFIG_SUN)	+= op/sun.so
+op-$(CONFIG_OBSD)	+= op/obsd.so
 op-$(CONFIG_COREAUDIO)	+= op/coreaudio.so
 op-$(CONFIG_AO)		+= op/ao.so
 op-$(CONFIG_WAVEOUT)	+= op/waveout.so
@@ -200,6 +202,7 @@ $(arts-objs): CFLAGS		+= $(ARTS_CFLAGS)
 $(oss-objs):  CFLAGS		+= $(OSS_CFLAGS)
 $(sndio-objs): CFLAGS		+= $(SNDIO_CFLAGS)
 $(sun-objs):  CFLAGS		+= $(SUN_CFLAGS)
+$(obsd-objs): CFLAGS		+= $(OBSD_CFLAGS)
 $(ao-objs):   CFLAGS		+= $(AO_CFLAGS)
 $(coreaudio-objs): CFLAGS	+= $(COREAUDIO_CFLAGS)
 $(waveout-objs): CFLAGS 	+= $(WAVEOUT_CFLAGS)
@@ -225,6 +228,9 @@ op/sndio.so: $(sndio-objs) $(libcmus-y)
 
 op/sun.so: $(sun-objs) $(libcmus-y)
 	$(call cmd,ld_dl,$(SUN_LIBS))
+
+op/obsd.so: $(obsd-objs) $(libcmus-y)
+	$(call cmd,ld_dl,$(OBSD_LIBS))
 
 op/ao.so: $(ao-objs) $(libcmus-y)
 	$(call cmd,ld_dl,$(AO_LIBS))

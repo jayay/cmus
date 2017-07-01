@@ -379,11 +379,24 @@ check_oss()
 
 check_sun()
 {
-	msg_checking "for header <sys/audioio.h>"
-	if test -f /usr/include/sys/audioio.h
+	msg_checking "for header <sys/audioio.h> on Sun"
+	if [ -f /usr/include/sys/audioio.h -a `uname -s` = SunOS ]
 	then
 		msg_result "yes"
 		return 0
+	else
+		msg_result "no"
+		return 1
+	fi
+}
+
+check_openbsd()
+{
+	msg_checking "for header <sys/audioio.h> on OpenBSD"
+	if [ -f /usr/include/sys/audioio.h -a `uname -s` = OpenBSD ]
+	then
+		msg_result "yes"
+		return 0;
 	else
 		msg_result "no"
 		return 1
@@ -526,6 +539,7 @@ Optional Features: y/n
   CONFIG_SAMPLERATE     Use libsamplerate to resample to JACK's rate    [auto]
   CONFIG_SNDIO          Sndio                                           [auto]
   CONFIG_SUN            Sun Audio                                       [auto]
+  CONFIG_OBSD		OpenBSD Audio					[auto]
   CONFIG_TREMOR         Use Tremor as Ogg/Vorbis input plugin           [n]
   CONFIG_VORBIS         Ogg/Vorbis (.ogg, application/ogg, audio/x-ogg) [auto]
   CONFIG_VTX            libayemu (.vtx)                                 [auto]
@@ -601,6 +615,7 @@ check check_arts       CONFIG_ARTS
 check check_oss        CONFIG_OSS
 check check_sndio      CONFIG_SNDIO
 check check_sun        CONFIG_SUN
+check check_openbsd    CONFIG_OBSD
 check check_waveout    CONFIG_WAVEOUT
 check check_roar       CONFIG_ROAR
 
@@ -642,7 +657,7 @@ makefile_vars \
 	CONFIG_COREAUDIO CONFIG_CUE CONFIG_FFMPEG CONFIG_FLAC CONFIG_JACK \
 	CONFIG_MAD CONFIG_MIKMOD CONFIG_MODPLUG CONFIG_MP4 CONFIG_MPC \
 	CONFIG_MPRIS CONFIG_OPUS CONFIG_OSS CONFIG_PULSE CONFIG_ROAR \
-	CONFIG_SAMPLERATE CONFIG_SNDIO CONFIG_SUN CONFIG_VORBIS CONFIG_VTX \
+	CONFIG_SAMPLERATE CONFIG_SNDIO CONFIG_SUN CONFIG_OBSD CONFIG_VORBIS CONFIG_VTX \
 	CONFIG_WAV CONFIG_WAVEOUT CONFIG_WAVPACK CONFIG_BASS
 
 generate_config_mk
