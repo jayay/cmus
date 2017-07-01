@@ -197,10 +197,6 @@ static int obsd_pause(void)
 
 static int obsd_unpause(void)
 {
-	struct audio_swpar ap;
-
-        AUDIO_INITPAR(&ap);
-
 	if (ioctl(obsdctl_fd, AUDIO_START, NULL) == -1)
 		return -1;
 
@@ -215,10 +211,6 @@ static int obsd_buffer_space(void)
         AUDIO_INITPAR(&ap);
 
 	if (ioctl(obsdctl_fd, AUDIO_GETPAR, &ap) == -1)
-		return -1;
-
-	struct audio_pos pos;
-	if (ioctl(obsd_fd, AUDIO_GETPOS, &pos) == -1)
 		return -1;
 
 	sp = ap.nblks * ap.round * ap.bps;

@@ -379,8 +379,8 @@ check_oss()
 
 check_sun()
 {
-	msg_checking "for header <sys/audioio.h> on Sun"
-	if [ -f /usr/include/sys/audioio.h -a `uname -s` = SunOS ]
+	msg_checking "for header <sys/audioio.h> on SunOS"
+	if test -f /usr/include/sys/audioio.h -a `uname -s` = SunOS
 	then
 		msg_result "yes"
 		return 0
@@ -393,7 +393,7 @@ check_sun()
 check_openbsd()
 {
 	msg_checking "for header <sys/audioio.h> on OpenBSD"
-	if [ -f /usr/include/sys/audioio.h -a `uname -s` = OpenBSD ]
+	if test -f /usr/include/sys/audioio.h -a `uname -s` = OpenBSD
 	then
 		msg_result "yes"
 		return 0;
