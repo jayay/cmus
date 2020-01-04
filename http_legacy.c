@@ -16,7 +16,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "http.h"
+#include "http_legacy.h"
 #include "file.h"
 #include "debug.h"
 #include "xmalloc.h"
