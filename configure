@@ -57,6 +57,12 @@ check_cflags()
 	return 0
 }
 
+check_curl()
+{
+	pkg_config LIBCURL "libcurl" "" "-lcurl"
+	return $?
+}
+
 check_sndio()
 {
 	check_library SNDIO "" "-lsndio"
@@ -508,6 +514,7 @@ Optional Features: y/n
   CONFIG_CDIO           libcdio CDDA input                              [auto]
   CONFIG_COREAUDIO      CoreAudio                                       [auto]
   CONFIG_CUE            CUE sheets (.cue)                               [y]
+  CONFIG_CURL           Open network streams using libcurl              [auto]
   CONFIG_DISCID         libdiscid CDDA identification                   [auto]
   CONFIG_FFMPEG         FFMPEG (.shn, .wma)                             [auto]
   CONFIG_FLAC           Free Lossless Audio Codec (.flac, .fla)         [auto]
@@ -573,6 +580,7 @@ check_string_function "strndup" && HAVE_STRNDUP=y
 
 check check_cddb       CONFIG_CDDB
 check check_cdio       CONFIG_CDIO
+check check_curl       CONFIG_CURL
 check check_flac       CONFIG_FLAC
 check check_mad        CONFIG_MAD
 check check_mikmod     CONFIG_MIKMOD
@@ -622,6 +630,7 @@ config_header config/cdio.h HAVE_CDDB
 config_header config/mpris.h CONFIG_MPRIS
 config_header config/datadir.h DATADIR
 config_header config/libdir.h LIBDIR
+config_header config/curl.h CONFIG_CURL
 config_header config/debug.h DEBUG
 config_header config/tremor.h CONFIG_TREMOR
 config_header config/modplug.h MODPLUG_API_8
@@ -639,10 +648,10 @@ CFLAGS="${CFLAGS} -DHAVE_CONFIG"
 makefile_vars bindir datadir libdir mandir exampledir
 makefile_vars \
 	CONFIG_AAC CONFIG_ALSA CONFIG_AO CONFIG_ARTS CONFIG_CDIO \
-	CONFIG_COREAUDIO CONFIG_CUE CONFIG_FFMPEG CONFIG_FLAC CONFIG_JACK \
-	CONFIG_MAD CONFIG_MIKMOD CONFIG_MODPLUG CONFIG_MP4 CONFIG_MPC \
-	CONFIG_MPRIS CONFIG_OPUS CONFIG_OSS CONFIG_PULSE CONFIG_ROAR \
-	CONFIG_SAMPLERATE CONFIG_SNDIO CONFIG_SUN CONFIG_VORBIS CONFIG_VTX \
-	CONFIG_WAV CONFIG_WAVEOUT CONFIG_WAVPACK CONFIG_BASS
+	CONFIG_COREAUDIO CONFIG_CUE CONFIG_CURL CONFIG_FFMPEG CONFIG_FLAC \
+	CONFIG_JACK CONFIG_MAD CONFIG_MIKMOD CONFIG_MODPLUG CONFIG_MP4 \
+	CONFIG_MPC CONFIG_MPRIS CONFIG_OPUS CONFIG_OSS CONFIG_PULSE \
+	CONFIG_ROAR CONFIG_SAMPLERATE CONFIG_SNDIO CONFIG_SUN CONFIG_VORBIS \
+	CONFIG_VTX CONFIG_WAV CONFIG_WAVEOUT CONFIG_WAVPACK CONFIG_BASS
 
 generate_config_mk
