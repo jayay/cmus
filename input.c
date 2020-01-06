@@ -20,6 +20,7 @@
 #include "input.h"
 #include "ip.h"
 #include "pcm.h"
+#include "http.h"
 #include "http_legacy.h"
 #include "xmalloc.h"
 #include "file.h"
@@ -104,7 +105,6 @@ static pthread_rwlock_t ip_lock = CMUS_RWLOCK_INITIALIZER;
 #define ip_unlock() cmus_rwlock_unlock(&ip_lock)
 
 /* timeouts (ms) */
-static int http_connection_timeout = 5e3;
 static int http_read_timeout = 5e3;
 
 static const char *pl_mime_types[] = {
@@ -178,99 +178,6 @@ get_ops_by_mime_type(const char *mime_type)
 	return rv;
 }
 
-static void keyvals_add_basic_auth(struct growing_keyvals *c,
-				   const char *user,
-				   const char *pass,
-				   const char *header)
-{
-	char buf[256];
-	char *encoded;
-
-	snprintf(buf, sizeof(buf), "%s:%s", user, pass);
-	encoded = base64_encode(buf);
-	if (encoded == NULL) {
-		d_print("couldn't base64 encode '%s'\n", buf);
-	} else {
-		snprintf(buf, sizeof(buf), "Basic %s", encoded);
-		free(encoded);
-		keyvals_add(c, header, xstrdup(buf));
-	}
-}
-
-static int do_http_get(struct http_get *hg, const char *uri, int redirections)
-{
-	GROWING_KEYVALS(h);
-	int i, rc;
-	const char *val;
-	char *redirloc;
-
-	d_print("%s\n", uri);
-
-	hg->headers = NULL;
-	hg->reason = NULL;
-	hg->proxy = NULL;
-	hg->code = -1;
-	hg->fd = -1;
-	if (http_parse_uri(uri, &hg->uri))
-		return -IP_ERROR_INVALID_URI;
-
-	if (http_open(hg, http_connection_timeout))
-		return -IP_ERROR_ERRNO;
-
-	keyvals_add(&h, "Host", xstrdup(hg->uri.host));
-	if (hg->proxy && hg->proxy->user && hg->proxy->pass)
-		keyvals_add_basic_auth(&h, hg->proxy->user, hg->proxy->pass, "Proxy-Authorization");
-	keyvals_add(&h, "User-Agent", xstrdup("cmus/" VERSION));
-	keyvals_add(&h, "Icy-MetaData", xstrdup("1"));
-	if (hg->uri.user && hg->uri.pass)
-		keyvals_add_basic_auth(&h, hg->uri.user, hg->uri.pass, "Authorization");
-	keyvals_terminate(&h);
-
-	rc = http_get(hg, h.keyvals, http_read_timeout);
-	keyvals_free(h.keyvals);
-	switch (rc) {
-	case -1:
-		return -IP_ERROR_ERRNO;
-	case -2:
-		return -IP_ERROR_HTTP_RESPONSE;
-	}
-
-	d_print("HTTP response: %d %s\n", hg->code, hg->reason);
-	for (i = 0; hg->headers[i].key != NULL; i++)
-		d_print("  %s: %s\n", hg->headers[i].key, hg->headers[i].val);
-
-	switch (hg->code) {
-	case 200: /* OK */
-		return 0;
-	/*
-	 * 3xx Codes (Redirections)
-	 *     unhandled: 300 Multiple Choices
-	 */
-	case 301: /* Moved Permanently */
-	case 302: /* Found */
-	case 303: /* See Other */
-	case 307: /* Temporary Redirect */
-		val = keyvals_get_val(hg->headers, "location");
-		if (!val)
-			return -IP_ERROR_HTTP_RESPONSE;
-
-		redirections++;
-		if (redirections > 2)
-			return -IP_ERROR_HTTP_REDIRECT_LIMIT;
-
-		redirloc = xstrdup(val);
-		http_get_free(hg);
-		close(hg->fd);
-
-		rc = do_http_get(hg, redirloc, redirections);
-
-		free(redirloc);
-		return rc;
-	default:
-		return -IP_ERROR_HTTP_STATUS;
-	}
-}
-
 static int setup_remote(struct input_plugin *ip, const struct keyval *headers, int sock)
 {
 	const char *val;
@@ -333,23 +240,25 @@ struct read_playlist_data {
 static int handle_line(void *data, const char *uri)
 {
 	struct read_playlist_data *rpd = data;
-	struct http_get hg;
+	http_priv *http;
+	http_init(&http);
 
 	rpd->count++;
-	rpd->rc = do_http_get(&hg, uri, 0);
-	if (rpd->rc) {
-		rpd->ip->http_code = hg.code;
-		rpd->ip->http_reason = hg.reason;
-		if (hg.fd >= 0)
-			close(hg.fd);
+	http_set_url(http, uri);
+	rpd->rc = http_perform(http);
+	if (rpd->rc) { // todo
+		rpd->ip->http_code = http->code;
+		rpd->ip->http_reason = http->reason;
+		if (http->fd >= 0)
+			close(http->fd);
 
-		hg.reason = NULL;
-		http_get_free(&hg);
+		http->reason = NULL;
+		http_free(http);
 		return 0;
 	}
 
-	rpd->rc = setup_remote(rpd->ip, hg.headers, hg.fd);
-	http_get_free(&hg);
+	rpd->rc = setup_remote(rpd->ip, http->headers, http->fd);
+	http_free(http);
 	return 1;
 }
 
@@ -376,34 +285,36 @@ static int read_playlist(struct input_plugin *ip, int sock)
 static int open_remote(struct input_plugin *ip)
 {
 	struct input_plugin_data *d = &ip->data;
-	struct http_get hg;
+	http_priv *http;
+	http_init(&http);
+	http_set_url(http, d->filename);
 	const char *val;
 	int rc;
 
-	rc = do_http_get(&hg, d->filename, 0);
+	rc = http_perform(http);
 	if (rc) {
-		ip->http_code = hg.code;
-		ip->http_reason = hg.reason;
-		hg.reason = NULL;
-		http_get_free(&hg);
+		ip->http_code = http->code;
+		ip->http_reason = http->reason;
+		http->reason = NULL;
+		http_free(http);
 		return rc;
 	}
 
-	val = keyvals_get_val(hg.headers, "Content-Type");
+	val = keyvals_get_val(http->headers, "Content-Type");
 	if (val) {
 		int i;
 
 		for (i = 0; i < N_ELEMENTS(pl_mime_types); i++) {
 			if (!strcasecmp(val, pl_mime_types[i])) {
 				d_print("Content-Type: %s\n", val);
-				http_get_free(&hg);
-				return read_playlist(ip, hg.fd);
+				http_free(http);
+				return read_playlist(ip, http->fd);
 			}
 		}
 	}
 
-	rc = setup_remote(ip, hg.headers, hg.fd);
-	http_get_free(&hg);
+	rc = setup_remote(ip, http->headers, http->fd);
+	http_free(http);
 	return rc;
 }
 

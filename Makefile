@@ -24,8 +24,8 @@ FFMPEG_LIBS += $(shell pkg-config --libs libswresample)
 CMUS_LIBS = $(PTHREAD_LIBS) $(NCURSES_LIBS) $(ICONV_LIBS) $(DL_LIBS) $(DISCID_LIBS) \
 			-lm $(COMPAT_LIBS) $(LIBSYSTEMD_LIBS)
 
-command_mode.o input.o main.o ui_curses.o op/pulse.lo: .version
-command_mode.o input.o main.o ui_curses.o op/pulse.lo: CFLAGS += -DVERSION=\"$(VERSION)\"
+command_mode.o input.o main.o ui_curses.o http_legacy.o op/pulse.lo: .version
+command_mode.o input.o main.o ui_curses.o http_legacy.o op/pulse.lo: CFLAGS += -DVERSION=\"$(VERSION)\"
 main.o server.o: CFLAGS += -DDEFAULT_PORT=3000
 discid.o: CFLAGS += $(DISCID_CFLAGS)
 mpris.o: CFLAGS += $(LIBSYSTEMD_CFLAGS)
@@ -38,13 +38,14 @@ mpris.o: CFLAGS += $(LIBSYSTEMD_CFLAGS)
 cmus-y := \
 	ape.o browser.o buffer.o cache.o channelmap.o cmdline.o cmus.o command_mode.o \
 	comment.o convert.lo cue.o cue_utils.o debug.o discid.o editable.o expr.o \
-	filters.o format_print.o gbuf.o glob.o help.o history.o http_legacy.o id3.o input.o \
+	filters.o format_print.o gbuf.o glob.o help.o history.o id3.o input.o \
 	job.o keys.o keyval.o lib.o load_dir.o locking.o mergesort.o misc.o options.o \
 	output.o pcm.o player.o play_queue.o pl.o rbtree.o read_wrapper.o search_mode.o \
 	search.o server.o spawn.o tabexp_file.o tabexp.o track_info.o track.o tree.o \
 	uchar.o u_collate.o ui_curses.o window.o worker.o xstrjoin.o
 
 cmus-$(CONFIG_MPRIS) += mpris.o
+cmus-y += $(if $(findstring y, $(CONFIG_CURL)), http_curl.o, http_legacy.o)
 
 $(cmus-y): CFLAGS += $(PTHREAD_CFLAGS) $(NCURSES_CFLAGS) $(ICONV_CFLAGS) $(DL_CFLAGS)
 

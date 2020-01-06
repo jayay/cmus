@@ -17,6 +17,8 @@
  */
 
 #include "http_legacy.h"
+#include "http.h"
+#include "ip.h"
 #include "file.h"
 #include "debug.h"
 #include "xmalloc.h"
@@ -34,6 +36,29 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <errno.h>
+
+/* timeouts (ms) */
+static int http_connection_timeout = 5e3;
+static int http_read_timeout = 5e3;
+
+static void keyvals_add_basic_auth(struct growing_keyvals *c,
+	const char *user,
+	const char *pass,
+	const char *header)
+{
+	char buf[256];
+	char *encoded;
+
+	snprintf(buf, sizeof(buf), "%s:%s", user, pass);
+	encoded = base64_encode(buf);
+	if (encoded == NULL) {
+		d_print("couldn't base64 encode '%s'\n", buf);
+	} else {
+		snprintf(buf, sizeof(buf), "Basic %s", encoded);
+		free(encoded);
+		keyvals_add(c, header, xstrdup(buf));
+	}
+}
 
 /*
  * @uri is http://[user[:pass]@]host[:port][/path][?query]
@@ -513,4 +538,98 @@ char *base64_encode(const char *str)
 	}
 	buf[d] = 0;
 	return buf;
+}
+
+
+int http_init(http_priv **p)
+{
+	*p = xmalloc0(sizeof(http_priv));
+	(*p)->code = -1;
+	(*p)->fd = -1;
+	return 0;
+}
+
+int http_set_url(http_priv *r, const char *uri)
+{
+	if (http_parse_uri(uri, &r->uri))
+		return -1;
+	return 0;
+}
+
+int http_set_basic_auth(http_priv *r, char *user, char *pass)
+{
+	r->uri.user = user;
+	r->uri.pass = pass;
+	return 0;
+}
+
+int http_set_proxy(http_priv *r, char *host, char *user, char *pass)
+{
+	r->proxy->host = host;
+	r->proxy->user = user;
+	r->proxy->pass = pass;
+	return 0;
+}
+
+int http_perform(http_priv *r)
+{
+	GROWING_KEYVALS(h);
+	int rc;
+	const char *val;
+
+	if (http_open(r, http_connection_timeout))
+		return -IP_ERROR_ERRNO;
+
+	keyvals_add(&h, "Host", xstrdup(r->uri.host));
+	if (r->proxy && r->proxy->user && r->proxy->pass)
+		keyvals_add_basic_auth(&h, r->proxy->user, r->proxy->pass, "Proxy-Authorization");
+
+	keyvals_add(&h, "User-Agent", xstrdup("cmus/" VERSION));
+	keyvals_add(&h, "Icy-MetaData", xstrdup("1"));
+	if (r->uri.user && r->uri.pass)
+		keyvals_add_basic_auth(&h, r->uri.user, r->uri.pass, "Authorization");
+	keyvals_terminate(&h);
+
+	rc = http_get(r, h.keyvals, http_read_timeout);
+	keyvals_free(h.keyvals);
+
+	switch (rc) {
+	case -1:
+		return -IP_ERROR_ERRNO;
+	case -2:
+		return -IP_ERROR_HTTP_RESPONSE;
+	}
+
+	switch (r->code) {
+	case 200: /* OK */
+		return 0;
+	/*
+	 * 3xx Codes (Redirections)
+	 *     unhandled: 300 Multiple Choices
+	 */
+	case 301: /* Moved Permanently */
+	case 302: /* Found */
+	case 303: /* See Other */
+	case 307: /* Temporary Redirect */
+		val = keyvals_get_val(r->headers, "location");
+		if (!val)
+			return -IP_ERROR_HTTP_RESPONSE;
+
+		r->redirects++;
+		if (r->redirects > 2)
+			return -IP_ERROR_HTTP_REDIRECT_LIMIT;
+
+		http_parse_uri(val, &r->uri);
+		close(r->fd);
+
+		rc = http_perform(r);
+		return rc;
+	default:
+		return -IP_ERROR_HTTP_STATUS;
+	}
+}
+
+void http_free(http_priv *r)
+{
+	http_get_free(r);
 }

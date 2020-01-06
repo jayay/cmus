@@ -47,6 +47,7 @@ struct http_get {
 	struct keyval *headers;
 	char *reason;
 	int code;
+	int redirects;
 };
 
 int http_parse_uri(const char *uri, struct http_uri *u);
