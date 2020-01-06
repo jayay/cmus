@@ -41,6 +41,85 @@
 static int http_connection_timeout = 5e3;
 static int http_read_timeout = 5e3;
 
+static void http_free_uri(struct http_uri *u)
+{
+	free(u->uri);
+	free(u->user);
+	free(u->pass);
+	free(u->host);
+	free(u->path);
+
+	u->uri  = NULL;
+	u->user = NULL;
+	u->pass = NULL;
+	u->host = NULL;
+	u->path = NULL;
+}
+
+static char *base64_encode(const char *str)
+{
+	static const char t[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	int str_len, buf_len, i, s, d;
+	char *buf;
+	unsigned char b0, b1, b2;
+
+	str_len = strlen(str);
+	buf_len = (str_len + 2) / 3 * 4 + 1;
+	buf = xnew(char, buf_len);
+	s = 0;
+	d = 0;
+	for (i = 0; i < str_len / 3; i++) {
+		b0 = str[s++];
+		b1 = str[s++];
+		b2 = str[s++];
+
+		/* 6 ms bits of b0 */
+		buf[d++] = t[b0 >> 2];
+
+		/* 2 ls bits of b0 . 4 ms bits of b1 */
+		buf[d++] = t[((b0 << 4) | (b1 >> 4)) & 0x3f];
+
+		/* 4 ls bits of b1 . 2 ms bits of b2 */
+		buf[d++] = t[((b1 << 2) | (b2 >> 6)) & 0x3f];
+
+		/* 6 ls bits of b2 */
+		buf[d++] = t[b2 & 0x3f];
+	}
+	switch (str_len % 3) {
+	case 2:
+		b0 = str[s++];
+		b1 = str[s++];
+
+		/* 6 ms bits of b0 */
+		buf[d++] = t[b0 >> 2];
+
+		/* 2 ls bits of b0 . 4 ms bits of b1 */
+		buf[d++] = t[((b0 << 4) | (b1 >> 4)) & 0x3f];
+
+		/* 4 ls bits of b1 */
+		buf[d++] = t[(b1 << 2) & 0x3f];
+
+		buf[d++] = '=';
+		break;
+	case 1:
+		b0 = str[s++];
+
+		/* 6 ms bits of b0 */
+		buf[d++] = t[b0 >> 2];
+
+		/* 2 ls bits of b0 */
+		buf[d++] = t[(b0 << 4) & 0x3f];
+
+		buf[d++] = '=';
+		buf[d++] = '=';
+		break;
+	case 0:
+		break;
+	}
+	buf[d] = 0;
+	return buf;
+}
+
 static void keyvals_add_basic_auth(struct growing_keyvals *c,
 	const char *user,
 	const char *pass,
@@ -67,7 +146,7 @@ static void keyvals_add_basic_auth(struct growing_keyvals *c,
  * server requests a password, the program interpreting the URL should request
  * one from the user.
  */
-int http_parse_uri(const char *uri, struct http_uri *u)
+static int http_parse_uri(const char *uri, struct http_uri *u)
 {
 	const char *str, *colon, *at, *slash, *host_start;
 
@@ -142,22 +221,7 @@ int http_parse_uri(const char *uri, struct http_uri *u)
 	return 0;
 }
 
-void http_free_uri(struct http_uri *u)
-{
-	free(u->uri);
-	free(u->user);
-	free(u->pass);
-	free(u->host);
-	free(u->path);
-
-	u->uri  = NULL;
-	u->user = NULL;
-	u->pass = NULL;
-	u->host = NULL;
-	u->path = NULL;
-}
-
-int http_open(struct http_get *hg, int timeout_ms)
+static int http_open(struct http_get *hg, int timeout_ms)
 {
 	const struct addrinfo hints = {
 		.ai_socktype = SOCK_STREAM
@@ -407,7 +471,12 @@ static int http_parse_response(char *str, struct http_get *hg)
 	return 0;
 }
 
-int http_get(struct http_get *hg, struct keyval *headers, int timeout_ms)
+/*
+ * returns:  0 success
+ *          -1 check errno
+ *          -2 parse error
+ */
+static int http_get(struct http_get *hg, struct keyval *headers, int timeout_ms)
 {
 	GBUF(buf);
 	int i, rc, save;
@@ -463,83 +532,6 @@ char *http_read_body(int fd, size_t *size, int timeout_ms)
 		}
 	}
 }
-
-void http_get_free(struct http_get *hg)
-{
-	http_free_uri(&hg->uri);
-	if (hg->proxy) {
-		http_free_uri(hg->proxy);
-		free(hg->proxy);
-	}
-	if (hg->headers)
-		keyvals_free(hg->headers);
-	free(hg->reason);
-}
-
-char *base64_encode(const char *str)
-{
-	static const char t[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	int str_len, buf_len, i, s, d;
-	char *buf;
-	unsigned char b0, b1, b2;
-
-	str_len = strlen(str);
-	buf_len = (str_len + 2) / 3 * 4 + 1;
-	buf = xnew(char, buf_len);
-	s = 0;
-	d = 0;
-	for (i = 0; i < str_len / 3; i++) {
-		b0 = str[s++];
-		b1 = str[s++];
-		b2 = str[s++];
-
-		/* 6 ms bits of b0 */
-		buf[d++] = t[b0 >> 2];
-
-		/* 2 ls bits of b0 . 4 ms bits of b1 */
-		buf[d++] = t[((b0 << 4) | (b1 >> 4)) & 0x3f];
-
-		/* 4 ls bits of b1 . 2 ms bits of b2 */
-		buf[d++] = t[((b1 << 2) | (b2 >> 6)) & 0x3f];
-
-		/* 6 ls bits of b2 */
-		buf[d++] = t[b2 & 0x3f];
-	}
-	switch (str_len % 3) {
-	case 2:
-		b0 = str[s++];
-		b1 = str[s++];
-
-		/* 6 ms bits of b0 */
-		buf[d++] = t[b0 >> 2];
-
-		/* 2 ls bits of b0 . 4 ms bits of b1 */
-		buf[d++] = t[((b0 << 4) | (b1 >> 4)) & 0x3f];
-
-		/* 4 ls bits of b1 */
-		buf[d++] = t[(b1 << 2) & 0x3f];
-
-		buf[d++] = '=';
-		break;
-	case 1:
-		b0 = str[s++];
-
-		/* 6 ms bits of b0 */
-		buf[d++] = t[b0 >> 2];
-
-		/* 2 ls bits of b0 */
-		buf[d++] = t[(b0 << 4) & 0x3f];
-
-		buf[d++] = '=';
-		buf[d++] = '=';
-		break;
-	case 0:
-		break;
-	}
-	buf[d] = 0;
-	return buf;
-}
-
 
 int http_init(http_priv **p)
 {
@@ -631,5 +623,12 @@ int http_perform(http_priv *r)
 
 void http_free(http_priv *r)
 {
-	http_get_free(r);
+	http_free_uri(&r->uri);
+	if (r->proxy) {
+		http_free_uri(r->proxy);
+		free(r->proxy);
+	}
+	if (r->headers)
+		keyvals_free(r->headers);
+	free(r->reason);
 }
